@@ -1,12 +1,9 @@
 const fs = require("fs/promises");
 const path = require("path");
 const Joi = require("joi");
+const { v4: uuidv4 } = require("uuid");
 
 const contactsPath = path.join(__dirname, "contacts.json");
-
-// const saveContacts = async (contacts) => {
-//   await fs.writeFile(contactsPath, JSON.stringify(contacts, null, 2));
-// };
 
 const listContacts = async () => {
   const data = await fs.readFile(contactsPath, "utf-8");
@@ -15,30 +12,23 @@ const listContacts = async () => {
 
 const getContactById = async (contactId) => {
   const contacts = await listContacts();
-  const contact = contacts.find((contact) => contact.id === contactId);
+  const contact = contacts.find((contact) => contact.id === `${contactId}`);
+
   if (!contact) {
     throw new Error("Contact not found");
   }
   return contact;
 };
 
-// const removeContact = async (contactId) => {
-//   const contacts = await listContacts();
-//   const index = contacts.findIndex((contact) => contact.id === contactId);
-//   if (index !== -1) {
-//     contacts.splice(index, 1);
-//     await saveContacts(contacts);
-//     return true;
-//   }
-//   return false;
-// };
-
 const removeContact = async (contactId) => {
   const contacts = await listContacts();
-  const updatedContacts = contacts.filter(
-    (contact) => contact.id !== contactId
-  );
+  let status = false;
+  const updatedContacts = contacts.filter((contact) => {
+    if (contact.id === contactId) status = true;
+    return contact.id !== contactId;
+  });
   await fs.writeFile(contactsPath, JSON.stringify(updatedContacts));
+  return status;
 };
 
 const contactSchema = Joi.object({
@@ -54,7 +44,8 @@ const addContact = async (body) => {
   }
 
   const contacts = await listContacts();
-  const newContact = { id: Date.now(), ...body };
+  const newContact = { ...body, id: uuidv4() };
+  console.log(newContact);
   contacts.push(newContact);
   await fs.writeFile(contactsPath, JSON.stringify(contacts));
   return newContact;
