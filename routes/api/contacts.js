@@ -1,69 +1,97 @@
 const express = require("express");
-const Joi = require("joi");
-const contacts = require("../../models/contacts");
+const {
+  listContacts,
+  getContactById,
+  removeContact,
+  addContact,
+  updateContact,
+  updateStatusContact,
+} = require("../../models/contacts");
 
 const router = express.Router();
 
-const contactSchema = Joi.object({
-  name: Joi.string().required(),
-  email: Joi.string().email().required(),
-  phone: Joi.string().required(),
-});
-
-router.get("/", async (req, res) => {
-  const allContacts = await contacts.listContacts();
-  res.json(allContacts);
-});
-
-router.get("/:contactId", async (req, res) => {
-  const contactId = req.params.contactId;
-  const contact = await contacts.getContactById(contactId);
-  if (contact) {
-    res.json(contact);
-  } else {
-    res.status(404).json({ message: "Not found" });
-  }
-});
-
-router.post("/", async (req, res) => {
+// Pobieranie listy wszystkich kontaktów
+router.get("/", async (req, res, next) => {
   try {
-    const { error } = contactSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ message: error.details[0].message });
-      return;
+    const contacts = await listContacts();
+    return res.json({
+      status: "success",
+      code: 200,
+      data: { contacts },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Pobieranie jednego kontaktu
+router.get("/:contactId", async (req, res, next) => {
+  try {
+    const { contactId } = req.params;
+    const contact = await getContactById(contactId);
+    if (!contact) {
+      return res.status(404).json({ message: "Not found" });
     }
-
-    const newContact = await contacts.addContact(req.body);
+    res.json(contact);
+  } catch (err) {
+    next(err);
+  }
+});
+// Dodanie nowego kontaktu
+router.post("/", async (req, res, next) => {
+  try {
+    const newContact = await addContact(req.body);
     res.status(201).json(newContact);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    next(err);
   }
 });
 
-router.delete("/:contactId", async (req, res) => {
-  const contactId = req.params.contactId;
-
-  const removed = await contacts.removeContact(contactId);
-  if (removed) {
-    res.json({ message: "Contact deleted" });
-  } else {
-    res.status(404).json({ message: "Not found" });
+// Usuwanie kontaktu
+router.delete("/:contactId", async (req, res, next) => {
+  try {
+    const { contactId } = req.params;
+    const deletedContact = await removeContact(contactId);
+    if (!deletedContact) {
+      return res.status(404).json({ message: "Not found" });
+    }
+    res.status(204).end();
+  } catch (err) {
+    next(err);
   }
 });
 
-router.put("/:contactId", async (req, res) => {
-  const contactId = req.params.contactId;
-  const { error } = contactSchema.validate(req.body);
-  if (error) {
-    res.status(400).json({ message: error.details[0].message });
-    return;
-  }
-
-  const updatedContact = await contacts.updateContact(contactId, req.body);
-  if (updatedContact) {
+// Aktualizowanie istniejącego kontaktu
+router.put("/:contactId", async (req, res, next) => {
+  try {
+    const { contactId } = req.params;
+    const updatedContact = await updateContact(contactId, req.body);
+    if (!updatedContact) {
+      return res.status(404).json({ message: "Not found" });
+    }
     res.json(updatedContact);
-  } else {
-    res.status(404).json({ message: "Not found" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Aktualizowanie pola 'favorite' w istniejącym kontakcie
+router.patch("/:contactId/favorite", async (req, res, next) => {
+  try {
+    const { contactId } = req.params;
+    const { favorite } = req.body;
+    if (favorite === undefined) {
+      return res.status(400).json({ message: "missing field favorite" });
+    }
+    const updatedContact = await updateStatusContact(contactId, {
+      favorite,
+    });
+    if (!updatedContact) {
+      return res.status(404).json({ message: "Not found" });
+    }
+    res.json(updatedContact);
+  } catch (err) {
+    next(err);
   }
 });
 
