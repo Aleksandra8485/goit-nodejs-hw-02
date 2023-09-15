@@ -97,7 +97,7 @@ router.post("/login", async (req, res) => {
 });
 
 // wylogowanie
-router.get("/logout", auth, async (req, res) => {
+router.post("/logout", auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
