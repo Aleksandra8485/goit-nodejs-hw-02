@@ -7,6 +7,10 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const secret = process.env.SECRET;
 const auth = require("../../auth");
+const multer = require("multer");
+// const gravatar = require("gravatar");
+const path = require("path");
+// const jimp = require("jimp");
 
 const signupSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -138,6 +142,27 @@ router.get("/current", auth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Internal Server Error" });
   }
+});
+
+// avatary, ładowanie
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "public/avatars");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage: storage });
+
+router.post("/upload", upload.single("file"), (req, res) => {
+  const { description } = req.body;
+  res.json({
+    description,
+    message: "File loaded correctly",
+    status: 200,
+  });
 });
 
 module.exports = router;
