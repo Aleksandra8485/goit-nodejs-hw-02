@@ -7,7 +7,6 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const secret = process.env.SECRET;
 const auth = require("../../auth");
-const { getUser } = require("../../services/users");
 
 const signupSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -99,9 +98,8 @@ router.post("/login", async (req, res) => {
 // wylogowanie
 router.post("/logout", auth, async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    const user = await getUser(userId);
+    const userId = req.user._id;
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(401).json({
