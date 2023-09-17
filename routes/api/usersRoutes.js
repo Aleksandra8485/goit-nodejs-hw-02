@@ -8,9 +8,10 @@ require("dotenv").config();
 const secret = process.env.SECRET;
 const auth = require("../../auth");
 const multer = require("multer");
-// const gravatar = require("gravatar");
+const gravatar = require("gravatar");
 const path = require("path");
-// const jimp = require("jimp");
+const jimp = require("jimp");
+const fs = require("fs/promises");
 
 const signupSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -33,10 +34,14 @@ router.post("/signup", async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
 
+    // Dodaj generowanie URL avatara przy pomocy gravatar
+    const avatarURL = gravatar.url(req.body.email, { s: "250" }, true);
+
     const user = new User({
       email: req.body.email,
       password: hashedPassword,
       subscription: "starter",
+      avatarURL, // Dodaj avatarURL
     });
 
     await user.save();
@@ -45,6 +50,7 @@ router.post("/signup", async (req, res) => {
       user: {
         email: user.email,
         subscription: user.subscription,
+        avatarURL: user.avatarURL, // Zwracamy również URL avatara
       },
     });
   } catch (error) {
@@ -164,5 +170,50 @@ router.post("/upload", upload.single("file"), (req, res) => {
     status: 200,
   });
 });
+
+// Dodaj endpoint do aktualizacji avatara
+router.patch(
+  "/avatars",
+  auth,
+  upload.single("avatar"),
+  async (req, res, next) => {
+    try {
+      // sprawdzenie czy użytkownik jest zalogowany
+      if (!req.user) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+
+      // pobranie załadowanego pliku avatara z req.file
+      const { file } = req;
+
+      // nadalnie unikalnej nazwy pliku na podstawie ID użytkownika i aktualnego czasu
+      const uniqueFilename = `${req.user.id}-${Date.now()}-${
+        file.originalname
+      }`;
+
+      // ścieżka do pliku tymczasowego w folderze "tmp"
+      const tmpFilePath = `tmp/${uniqueFilename}`;
+
+      // ścieżka docelowa
+      const targetFilePath = `public/avatars/${uniqueFilename}`;
+
+      // Jimp-obrówbka avatara (zmiana rozmiaru na 250x250)
+      const image = await jimp.read(file.path);
+      await image.resize(250, 250).write(tmpFilePath);
+
+      // przeniesienie awatara z folderu tymczasowego do docelowego
+      await fs.rename(tmpFilePath, targetFilePath);
+
+      // uaktualnij pole avatarURL użytkownika w bazie danych
+      req.user.avatarURL = `/avatars/${uniqueFilename}`;
+      await req.user.save();
+
+      // odpowiedź z URL-em avatara
+      res.status(200).json({ avatarURL: req.user.avatarURL });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;
