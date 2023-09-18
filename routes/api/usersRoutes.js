@@ -171,6 +171,7 @@ router.post("/upload", upload.single("file"), (req, res) => {
   });
 });
 
+const avatarDir = path.join(__dirname, "../../", "public", "avatars");
 // Dodaj endpoint do aktualizacji avatara
 router.patch(
   "/avatars",
@@ -182,36 +183,30 @@ router.patch(
       if (!req.user) {
         return res.status(401).json({ message: "Not authorized" });
       }
-
-      // pobranie załadowanego pliku avatara z req.file
-      const { file } = req;
-
-      // nadalnie unikalnej nazwy pliku na podstawie ID użytkownika i aktualnego czasu
-      const uniqueFilename = `${req.user.id}-${Date.now()}-${
-        file.originalname
-      }`;
-
-      // ścieżka do pliku tymczasowego w folderze "tmp"
-      const tmpFilePath = `tmp/${uniqueFilename}`;
-
-      // ścieżka docelowa
-      const targetFilePath = `public/avatars/${uniqueFilename}`;
-
-      // Jimp-obrówbka avatara (zmiana rozmiaru na 250x250)
-      const image = await jimp.read(file.path);
-      await image.resize(250, 250).write(tmpFilePath);
-
-      // przeniesienie awatara z folderu tymczasowego do docelowego
-      await fs.rename(tmpFilePath, targetFilePath);
-
-      // uaktualnij pole avatarURL użytkownika w bazie danych
-      req.user.avatarURL = `/avatars/${uniqueFilename}`;
-      await req.user.save();
-
-      // odpowiedź z URL-em avatara
-      res.status(200).json({ avatarURL: req.user.avatarURL });
+      // pobieram dane z requestu
+      const { _id } = req.user;
+      const { path: tempUpload, originalname } = req.file;
+      const extension = originalname.split(".").pop();
+      // dodane rozszerzenie
+      const filename = `${_id}.${extension}`;
+      const resultUpload = path.join(avatarDir, filename);
+      // zmiena nazwy
+      await fs.rename(tempUpload, resultUpload);
+      const avatarURL = path.join("public/avatars", originalname);
+      jimp
+        .read(avatarURL)
+        .then((img) => {
+          return img.resize(250, 250).write(avatarURL);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+      // aktualizacja za pomocą id
+      await User.findByIdAndUpdate(_id, { avatarURL });
+      res.json({ _id, avatarURL });
     } catch (error) {
-      next(error);
+      await fs.unlink(req.file.path);
+      throw error;
     }
   }
 );
