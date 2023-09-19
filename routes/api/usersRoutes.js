@@ -7,6 +7,11 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const secret = process.env.SECRET;
 const auth = require("../../auth");
+const multer = require("multer");
+const gravatar = require("gravatar");
+const path = require("path");
+const jimp = require("jimp");
+const fs = require("fs/promises");
 
 const signupSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -29,10 +34,14 @@ router.post("/signup", async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
 
+    // Dodaj generowanie URL avatara przy pomocy gravatar
+    const avatarURL = gravatar.url(req.body.email, { s: "250" }, true);
+
     const user = new User({
       email: req.body.email,
       password: hashedPassword,
       subscription: "starter",
+      avatarURL, // Dodaj avatarURL
     });
 
     await user.save();
@@ -41,6 +50,7 @@ router.post("/signup", async (req, res) => {
       user: {
         email: user.email,
         subscription: user.subscription,
+        avatarURL: user.avatarURL, // Zwracamy również URL avatara
       },
     });
   } catch (error) {
@@ -139,5 +149,66 @@ router.get("/current", auth, async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
+// avatary, ładowanie
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "public/avatars");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage: storage });
+
+router.post("/upload", upload.single("file"), (req, res) => {
+  const { description } = req.body;
+  res.json({
+    description,
+    message: "File loaded correctly",
+    status: 200,
+  });
+});
+
+const avatarDir = path.join(__dirname, "../../", "public", "avatars");
+// Dodaj endpoint do aktualizacji avatara
+router.patch(
+  "/avatars",
+  auth,
+  upload.single("avatar"),
+  async (req, res, next) => {
+    try {
+      // sprawdzenie czy użytkownik jest zalogowany
+      if (!req.user) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+      // pobieram dane z requestu
+      const { _id } = req.user;
+      const { path: tempUpload, originalname } = req.file;
+      const extension = originalname.split(".").pop();
+      // dodane rozszerzenie
+      const filename = `${_id}.${extension}`;
+      const resultUpload = path.join(avatarDir, filename);
+      // zmiena nazwy
+      await fs.rename(tempUpload, resultUpload);
+      const avatarURL = path.join("public/avatars", originalname);
+      jimp
+        .read(avatarURL)
+        .then((img) => {
+          return img.resize(250, 250).write(avatarURL);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+      // aktualizacja za pomocą id
+      await User.findByIdAndUpdate(_id, { avatarURL });
+      res.json({ _id, avatarURL });
+    } catch (error) {
+      await fs.unlink(req.file.path);
+      throw error;
+    }
+  }
+);
 
 module.exports = router;
