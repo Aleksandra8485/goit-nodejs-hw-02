@@ -12,6 +12,9 @@ const gravatar = require("gravatar");
 const path = require("path");
 const jimp = require("jimp");
 const fs = require("fs/promises");
+// const nodemailer = require("nodemailer");
+const transporter = require("../../config/nodemailerConfig"); // Importuj wcześniej utworzony transporter
+const uuid = require("uuid"); // Dodaj import dla uuid
 
 const signupSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -34,6 +37,9 @@ router.post("/signup", async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
 
+    // Generuj verificationToken
+    const verificationToken = uuid.v4(); // Tutaj generujemy unikalny token
+
     // Dodaj generowanie URL avatara przy pomocy gravatar
     const avatarURL = gravatar.url(req.body.email, { s: "250" }, true);
 
@@ -42,9 +48,30 @@ router.post("/signup", async (req, res) => {
       password: hashedPassword,
       subscription: "starter",
       avatarURL, // Dodaj avatarURL
+      verificationToken, // Dodaj verificationToken do użytkownika
     });
 
     await user.save();
+
+    // Po zapisaniu użytkownika
+    const emailVerificationLink = `http://localhost:3001/verify?token=${user.token}`; // Tutaj użyj tokena użytkownika
+    const mailOptions = {
+      from: "MagMar80@gmail.com",
+      to: user.email, // Adres e-mail użytkownika
+      subject: "Potwierdzenie rejestracji",
+      text: `Kliknij poniższy link, aby potwierdzić swoją rejestrację:\n${emailVerificationLink}`,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Błąd podczas wysyłania e-maila:", error);
+      } else {
+        console.log(
+          "E-mail z linkiem do weryfikacji został wysłany:",
+          info.response
+        );
+      }
+    });
 
     res.status(201).json({
       user: {
@@ -102,6 +129,33 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// Endpoint do weryfikacji emaila
+router.get("/verify/:verificationToken", async (req, res) => {
+  const { verificationToken } = req.params;
+
+  try {
+    // Znajdź użytkownika po verificationToken
+    const user = await User.findOne({ verificationToken });
+
+    // Jeśli użytkownik nie został znaleziony, zwróć błąd "Not Found"
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Jeśli użytkownik został znaleziony, ustaw verificationToken na null
+    // i pole verify na true
+    user.verificationToken = null;
+    user.verify = true;
+    await user.save();
+
+    // Zwróć odpowiedź o sukcesie
+    return res.status(200).json({ message: "Verification successful" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -172,6 +226,7 @@ router.post("/upload", upload.single("file"), (req, res) => {
 });
 
 const avatarDir = path.join(__dirname, "../../", "public", "avatars");
+
 // Dodaj endpoint do aktualizacji avatara
 router.patch(
   "/avatars",
