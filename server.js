@@ -12,8 +12,8 @@ const startServer = async () => {
     });
     console.log("Database connection successful");
 
-    app.listen(3001, () => {
-      console.log("Server running. Use our API on port: 3001");
+    app.listen(3000, () => {
+      console.log("Server running. Use our API on port: 3000");
     });
   } catch (error) {
     console.error("Cannot connect to Mongo Database");

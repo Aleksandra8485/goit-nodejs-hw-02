@@ -54,7 +54,7 @@ router.post("/signup", async (req, res) => {
     await user.save();
 
     // Po zapisaniu użytkownika
-    const emailVerificationLink = `http://localhost:3001/verify?token=${user.token}`; // Tutaj użyj tokena użytkownika
+    const emailVerificationLink = `http://localhost:3000/verify?token=${user.token}`; // Tutaj użyj tokena użytkownika
     const mailOptions = {
       from: "MagMar80@gmail.com",
       to: user.email, // Adres e-mail użytkownika
@@ -153,6 +153,65 @@ router.get("/verify/:verificationToken", async (req, res) => {
 
     // Zwróć odpowiedź o sukcesie
     return res.status(200).json({ message: "Verification successful" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Endpoint do ponownego wysyłania wiadomości z odnośnikiem do weryfikacji
+router.post("/verify", async (req, res) => {
+  // Sprawdź, czy body zawiera wymagane pole "email"
+  const { error } = Joi.object({
+    email: Joi.string().email().required(),
+  }).validate(req.body);
+
+  if (error) {
+    return res.status(400).json({ message: "missing required field email" });
+  }
+
+  const { email } = req.body;
+
+  try {
+    // Znajdź użytkownika po adresie e-mail
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Jeśli użytkownik jest już zweryfikowany, zwróć błąd
+    if (user.verify) {
+      return res
+        .status(400)
+        .json({ message: "Verification has already been passed" });
+    }
+
+    // Ponownie wygeneruj verificationToken i zapisz go w bazie danych
+    user.generateVerificationToken();
+    await user.save();
+
+    // Wyślij ponownie wiadomość z odnośnikiem do weryfikacji
+    const emailVerificationLink = `http://localhost:3000/verify?token=${user.token}`;
+    const mailOptions = {
+      from: "MagMar80@gmail.com",
+      to: user.email,
+      subject: "Potwierdzenie rejestracji",
+      text: `Kliknij poniższy link, aby potwierdzić swoją rejestrację:\n${emailVerificationLink}`,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Błąd podczas wysyłania e-maila:", error);
+      } else {
+        console.log(
+          "E-mail z linkiem do weryfikacji został wysłany:",
+          info.response
+        );
+      }
+    });
+
+    return res.status(200).json({ message: "Verification email sent" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal server error" });
